@@ -187,6 +187,9 @@ def parse_datetime(text: str, search=True) -> Optional[datetime]:
     Returns:
         The datetime object, or None if it couldn't find a date.
     """
+    settings = {
+        'RELATIVE_BASE': datetime.today().replace(minute=0, hour=0, second=0, microsecond=0)
+    }
     if search:
         time_match = datetime_regex.search(text)
         dow_match = day_of_week_regex.search(text)
@@ -197,9 +200,9 @@ def parse_datetime(text: str, search=True) -> Optional[datetime]:
             today = calendar.day_abbr[datetime.today().weekday()]
             if text == today:
                 # Fix for dateparser misinterpreting "last Monday" as today if today is Monday
-                return dateparser.parse(text) - timedelta(days=7)
+                return dateparser.parse(text, settings=settings) - timedelta(days=7)
 
-    result = dateparser.parse(text)
+    result = dateparser.parse(text, settings=settings)
     if result:
         return result.replace(microsecond=0)
     return None
