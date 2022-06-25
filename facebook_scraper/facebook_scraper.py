@@ -622,6 +622,7 @@ class FacebookScraper:
             about_url = f'/{page}/about/'
             logger.debug(f"Requesting page from: {about_url}")
             resp = self.get(about_url)
+            result["name"] = resp.html.find("title", first=True).text.replace(" - About", "")
             desc = resp.html.find("meta[name='description']", first=True)
             result["about"] = resp.html.find(
                 '#pages_msite_body_contents,div.aboutme', first=True
@@ -640,6 +641,7 @@ class FacebookScraper:
             url = f'/{page}/'
             logger.debug(f"Requesting page from: {url}")
             resp = self.get(url)
+            result["name"] = resp.html.find("title", first=True).text.replace(" - Home", "")
             desc = resp.html.find("meta[name='description']", first=True)
             ld_json = None
             try:
@@ -701,7 +703,10 @@ class FacebookScraper:
             if len(bits) == 3:
                 result["people_talking_about_this"] = utils.parse_int(bits[1])
                 result["checkins"] = utils.parse_int(bits[2])
-        result["reviews"] = self.get_page_reviews(page, **kwargs)
+        if kwargs.get("reviews"):
+            result["reviews"] = self.get_page_reviews(page, **kwargs)
+            if kwargs.get("reviews") != "generator":
+                result["reviews"] = utils.safe_consume(result["reviews"])
 
         return result
 
@@ -903,6 +908,16 @@ class FacebookScraper:
                 "you’re temporarily blocked",
             ]
             t = time.time() - t0
+
+            if "checkpoint" in response.url:
+                if response.html.find("h1", containing="We suspended your account"):
+                    record_event(
+                        "exception", 
+                        data={"url": url, "exception": "AccountDisabled", "time": t, "size": resp_size}, 
+                        remark=proxy_server
+                    )
+                    raise exceptions.AccountDisabled("Your Account Has Been Disabled")
+
             if title:
                 if title.text.lower() in not_found_titles:
                     record_event(
