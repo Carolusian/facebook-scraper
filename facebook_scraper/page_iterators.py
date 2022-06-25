@@ -78,7 +78,13 @@ def iter_photos(account: str, request_fn: RequestFunction, **kwargs) -> Iterator
 def generic_iter_pages(
     start_url, page_parser_cls, request_fn: RequestFunction, **kwargs
 ) -> Iterator[Page]:
-    next_url = start_url
+    resumable_next_url = kwargs.pop("next_url", None)
+
+    # resumable_next_url is for resuming pagination
+    if resumable_next_url: 
+        next_url = resumable_next_url
+    else:
+        next_url = start_url
 
     base_url = kwargs.get('base_url', FB_MOBILE_BASE_URL)
     request_url_callback = kwargs.get('request_url_callback')
