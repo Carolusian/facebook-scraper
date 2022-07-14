@@ -39,6 +39,12 @@ def extract_group_post(
     return GroupPostExtractor(raw_post, options, request_fn, full_post_html).extract_post()
 
 
+def extract_story_post(
+    raw_post: RawPost, options: Options, request_fn: RequestFunction, full_post_html=None
+) -> Post:
+    return StoryExtractor(raw_post, options, request_fn, full_post_html).extract_post()
+
+
 def extract_photo_post(
     raw_post: RawPost, options: Options, request_fn: RequestFunction, full_post_html
 ) -> Post:
@@ -1098,17 +1104,52 @@ class PostExtractor:
         if not self.options.get("progress"):
             logger.debug(f"Fetching {replies_url}")
         try:
-            response = self.request(replies_url)
+            # Some users have to use an AJAX POST method to get replies.
+            # Check if this is the case by checking for the element that holds the encrypted response token
+            use_ajax_post = self.full_post_html.find("input[name='fb_dtsg']", first=True) is not None
+
+            if use_ajax_post:
+                fb_dtsg = self.full_post_html.find("input[name='fb_dtsg']", first=True).attrs["value"]
+                encryptedAjaxResponseToken = re.search(
+                    r'encrypted":"([^"]+)', self.full_post_html.html
+                ).group(1)
+                response = self.request(
+                    replies_url,
+                    post=True,
+                    params={"fb_dtsg": fb_dtsg, "__a": encryptedAjaxResponseToken},
+                )
+            else:
+                use_ajax_post = False
+                response = self.request(replies_url)
+            
         except exceptions.TemporarilyBanned:
             raise
         except Exception as e:
             logger.error(e)
             return
-        # Skip first element, as it will be this comment itself
-        reply_selector = 'div[data-sigil="comment"]'
-        if self.options.get("noscript"):
-            reply_selector = '#root div[id]'
-        replies = response.html.find(reply_selector)[1:]
+
+        if use_ajax_post:
+            prefix_length = len('for (;;);')
+            data = json.loads(response.text[prefix_length:])  # Strip 'for (;;);'
+            for action in data['payload']['actions']:
+                if action["cmd"] == "replace":
+                    html = utils.make_html_element(
+                        action['html'],
+                        url=FB_MOBILE_BASE_URL,
+                    )
+                    break
+
+            reply_selector = 'div[data-sigil="comment inline-reply"]'
+        
+            if self.options.get("noscript"):
+                reply_selector = '#root div[id]'
+            replies = html.find(reply_selector)
+        
+        else:
+            # Skip first element, as it will be this comment itself
+            reply_selector = 'div[data-sigil="comment"]'
+            replies = response.html.find(reply_selector)[1:]
+            
         try:
             for reply in replies:
                 yield self.parse_comment(reply)
@@ -1116,7 +1157,7 @@ class PostExtractor:
             raise
         except Exception as e:
             logger.error(f"Unable to parse comment {replies_url} replies {replies}: {e}")
-
+            
     def extract_comment_with_replies(self, comment):
         try:
             result = self.parse_comment(comment)
@@ -1306,6 +1347,8 @@ class PostExtractor:
                 url = self.post.get('post_url').replace(FB_BASE_URL, FB_MOBILE_BASE_URL)
                 logger.debug(f"Fetching {url}")
                 response = self.request(url)
+            if response.text.startswith("for (;;)"):
+                logger.warning("full_post_html startswith for (;;)")
             self._full_post_html = response.html
             return self._full_post_html
         else:
@@ -1388,3 +1431,19 @@ class HashtagPostExtractor(PostExtractor):
         if match:
             return match.groups()[0]
         return None
+
+
+class StoryExtractor(PostExtractor):
+    def extract_username(self) -> PartialPost:
+        elem = self.element.find('#m-stories-card-header', first=True)
+        if elem:
+            url = elem.find("a", first=True).attrs["href"]
+            if url:
+                url = utils.urljoin(FB_BASE_URL, url)
+            return {'username': elem.find("div.overflowText", first=True).text, 'user_url': url}
+
+    def extract_time(self) -> PartialPost:
+        date_element = self.element.find("abbr[data-store*='time']", first=True)
+        time = json.loads(date_element.attrs["data-store"])["time"]
+        logger.debug(f"Got exact timestamp from abbr[data-store]: {datetime.fromtimestamp(time)}")
+        return {'time': datetime.fromtimestamp(time), 'timestamp': time}

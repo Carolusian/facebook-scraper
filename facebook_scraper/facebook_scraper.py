@@ -27,6 +27,7 @@ from .extractors import (
     extract_group_post,
     extract_post,
     extract_photo_post,
+    extract_story_post,
     PostExtractor,
     extract_hashtag_post,
 )
@@ -143,13 +144,16 @@ class FacebookScraper:
             logger.debug(f"Requesting page from: {url}")
             response = self.get(url)
             options["response_url"] = response.url
-            elem = response.html.find('[data-ft*="top_level_post_id"]', first=True)
-            if not elem:
-                elem = response.html.find('div.async_like', first=True)
             photo_post = False
-            if response.html.find("div.msg", first=True):
-                photo_post = True
-                elem = response.html
+            if "/stories/" in url or "/story/" in url:
+                elem = response.html.find("#story_viewer_content", first=True)
+            else:
+                elem = response.html.find('[data-ft*="top_level_post_id"]', first=True)
+                if not elem:
+                    elem = response.html.find('div.async_like', first=True)
+                if response.html.find("div.msg", first=True):
+                    photo_post = True
+                    elem = response.html
             if not elem:
                 logger.warning("No raw posts (<article> elements) were found in this page.")
             else:
@@ -175,6 +179,15 @@ class FacebookScraper:
                 elif url.startswith(utils.urljoin(FB_MOBILE_BASE_URL, "/groups/")):
                     post.update(
                         extract_group_post(
+                            elem,
+                            request_fn=self.get,
+                            options=options,
+                            full_post_html=response.html,
+                        )
+                    )
+                elif "/stories/" in url or "/story/" in url:
+                    post.update(
+                        extract_story_post(
                             elem,
                             request_fn=self.get,
                             options=options,
@@ -492,7 +505,7 @@ class FacebookScraper:
             )
 
         # Likes
-        if result["id"] and kwargs.get("likes"):
+        if result.get("id") and kwargs.get("likes"):
             likes_url = utils.urljoin(
                 FB_MOBILE_BASE_URL,
                 f'timeline/app_section/?section_token={result["id"]}:2409997254',
@@ -657,6 +670,8 @@ class FacebookScraper:
                     ).text
                 except:
                     logger.error("No ld+json element")
+                    likes_and_follows = community_resp.html.find("#page_suggestions_on_liking+div", first=True).text.split("\n")
+                    result["followers"] = utils.convert_numeric_abbr(likes_and_follows[2])
             if ld_json:
                 meta = demjson.decode(ld_json)
                 result.update(meta["author"])
@@ -854,7 +869,12 @@ class FacebookScraper:
             url = str(url)
             if not url.startswith("http"):
                 url = utils.urljoin(FB_MOBILE_BASE_URL, url)
-            response = self.session.get(url=url, **self.requests_kwargs, **kwargs)
+
+            if kwargs.get("post"):
+                kwargs.pop("post")
+                response = self.session.post(url=url, **kwargs)
+            else:
+                response = self.session.get(url=url, **self.requests_kwargs, **kwargs)
             resp_size += len(response.content)
             DEBUG = False
             if DEBUG:
