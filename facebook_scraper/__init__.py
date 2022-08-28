@@ -18,6 +18,7 @@ import traceback
 import time
 from datetime import datetime, timedelta
 import re
+import os
 
 
 _scraper = FacebookScraper()
@@ -402,6 +403,9 @@ def write_posts_to_csv(
     if encoding is None:
         encoding = locale.getpreferredencoding()
 
+    if os.path.isfile(filename):
+        raise FileExistsError(f"{filename} exists")
+
     if filename == "-":
         output_file = sys.stdout
     else:
@@ -491,6 +495,18 @@ def write_posts_to_csv(
     if first_post:
         print("Couldn't get any posts.", file=sys.stderr)
     output_file.close()
+
+
+def get_groups_by_search(
+    word: str,
+    **kwargs,
+):
+    """Searches Facebook groups and yields ids for each result
+        on the first page"""
+    _scraper.requests_kwargs['timeout'] = kwargs.pop('timeout', DEFAULT_REQUESTS_TIMEOUT)
+    cookies = kwargs.pop('cookies', None)
+    set_cookies(cookies)
+    return _scraper.get_groups_by_search(word, **kwargs)
 
 
 def enable_logging(level=logging.DEBUG):
