@@ -6,7 +6,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/facebook-scraper?color=blue)](https://pypi.python.org/pypi/facebook-scraper/)
 [![PyPI pyversions](https://img.shields.io/pypi/pyversions/facebook-scraper.svg)](https://pypi.python.org/pypi/facebook-scraper/)
-[![GitHub commits since tagged version](https://img.shields.io/github/commits-since/kevinzg/facebook-scraper/v0.2.58)](https://github.com/kevinzg/facebook-scraper/commits/)
+[![GitHub commits since tagged version](https://img.shields.io/github/commits-since/kevinzg/facebook-scraper/v0.2.59)](https://github.com/kevinzg/facebook-scraper/commits/)
 
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
@@ -186,7 +186,7 @@ Usage:
 
 ```python
 from facebook_scraper import get_group_info
-get_group_info("latesthairstyles") # or get_group_info("latesthairstyles", cookies="cookies.txt")
+get_group_info("makeupartistsgroup") # or get_group_info("makeupartistsgroup", cookies="cookies.txt")
 ```
 
 Output:
